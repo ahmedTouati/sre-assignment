@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package token;
+
+option go_package = "token-service/proto";
+
+service TokenService {
+  rpc MintToken(MintTokenRequest) returns (MintTokenResponse);
+  rpc ValidateToken(ValidateTokenRequest) returns (ValidateTokenResponse);
+}
+
+message MintTokenRequest {
+  string user_email = 1;
+  repeated string permissions = 2;
+  int32 ttl_seconds = 3;
+}
+
+message MintTokenResponse {
+  string token = 1;
+}
+
+message ValidateTokenRequest {
+  string token = 1;
+}
+
+message ValidateTokenResponse {
+  bool valid = 1;
+  string user_email = 2;
+}
