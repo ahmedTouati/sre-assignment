@@ -108,6 +108,28 @@ curl http://localhost:8000/metrics   # Python service
 curl http://localhost:9090/metrics   # Go service
 ```
 
+## Docker Compose
+
+Copy the example environment file and set the PostgreSQL admin, application,
+and Redis passwords:
+
+```bash
+cp .env.example .env
+```
+
+Then start the stack:
+
+```bash
+docker compose up --build
+```
+
+The API connects to PostgreSQL with a separate read-only role. Ports `8000` and
+`9090` are available only on the local machine and can be changed in `.env`.
+
+Stop the services with `docker compose down`. The database initialization
+scripts run only when the PostgreSQL volume is empty. To reset all local data,
+use `docker compose down -v`; this deletes both PostgreSQL and Redis volumes.
+
 ## Sample Data
 
 | User  | Email               | Permissions            |
