@@ -392,6 +392,8 @@ validates the Helm chart, and builds both images on every push and pull request.
 - The PostgreSQL pool is bounded and connections are rolled back before reuse.
   SQL and gRPC calls have deadlines; pool size is reviewed with HPA limits and
   the database connection budget.
+- Redis stores the email with a short-lived token because validation returns it.
+  Production should use a token hash and an opaque user ID or encrypted value.
 - The included storage, alert thresholds, CPU HPA, and single-window SLO rules
   are suitable for a demo. Production needs HA storage, backups, TLS for OTLP,
   multi-window burn-rate alerts, and an external secret manager.
