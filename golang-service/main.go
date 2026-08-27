@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -57,6 +58,15 @@ var (
 		Help:    "gRPC request duration",
 		Buckets: prometheus.DefBuckets,
 	}, []string{"method", "code"})
+	httpRequestsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "http_requests_total",
+		Help: "Total HTTP requests handled",
+	}, []string{"method", "status", "handler"})
+	httpRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "http_request_duration_seconds",
+		Help:    "HTTP request duration",
+		Buckets: prometheus.DefBuckets,
+	}, []string{"method", "handler"})
 	redisQueueDepth = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "redis_queue_depth",
 		Help: "Current direct Redis commands awaiting completion",
@@ -185,6 +195,42 @@ func grpcMetricsInterceptor(ctx context.Context, req any, info *grpc.UnaryServer
 	grpcRequestsTotal.WithLabelValues(info.FullMethod, code).Inc()
 	grpcRequestDuration.WithLabelValues(info.FullMethod, code).Observe(time.Since(started).Seconds())
 	return response, err
+}
+
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (r *statusRecorder) WriteHeader(status int) {
+	if r.status != 0 {
+		return
+	}
+	r.status = status
+	r.ResponseWriter.WriteHeader(status)
+}
+
+func (r *statusRecorder) Write(body []byte) (int, error) {
+	if r.status == 0 {
+		r.WriteHeader(http.StatusOK)
+	}
+	return r.ResponseWriter.Write(body)
+}
+
+func instrumentHTTP(route string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		started := time.Now()
+		recorder := &statusRecorder{ResponseWriter: w}
+
+		next.ServeHTTP(recorder, r)
+		if recorder.status == 0 {
+			recorder.status = http.StatusOK
+		}
+
+		status := strconv.Itoa(recorder.status/100) + "xx"
+		httpRequestsTotal.WithLabelValues(r.Method, status, route).Inc()
+		httpRequestDuration.WithLabelValues(r.Method, route).Observe(time.Since(started).Seconds())
+	})
 }
 
 func observeRedisOperation(operation string, run func() error) error {
@@ -348,8 +394,8 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.Handler())
-	mux.HandleFunc("/health", healthHandler)
-	mux.HandleFunc("/ready", readinessHandler(rdb))
+	mux.Handle("/health", instrumentHTTP("/health", http.HandlerFunc(healthHandler)))
+	mux.Handle("/ready", instrumentHTTP("/ready", readinessHandler(rdb)))
 	httpServer := &http.Server{
 		Addr:              ":9090",
 		Handler:           mux,

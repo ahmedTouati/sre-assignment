@@ -167,7 +167,10 @@ app = FastAPI(lifespan=lifespan)
 FastAPIInstrumentor.instrument_app(app)
 
 # Instrument FastAPI for automatic Prometheus metrics (exposes /metrics)
-Instrumentator().instrument(app).expose(app)
+Instrumentator().instrument(
+    app,
+    latency_lowr_buckets=(0.1, 0.25, 0.5, 0.75, 1, 2.5, 5),
+).expose(app)
 
 
 def postgres_ready():

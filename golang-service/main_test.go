@@ -7,13 +7,16 @@ import (
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 )
 
 func TestHealthHandler(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/health", nil)
+	counter := httpRequestsTotal.WithLabelValues(http.MethodGet, "2xx", "/health")
+	before := testutil.ToFloat64(counter)
 
-	healthHandler(recorder, request)
+	instrumentHTTP("/health", http.HandlerFunc(healthHandler)).ServeHTTP(recorder, request)
 
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, recorder.Code)
@@ -26,12 +29,17 @@ func TestHealthHandler(t *testing.T) {
 	if body["status"] != "healthy" {
 		t.Fatalf("expected healthy response, got %q", body["status"])
 	}
+	if got := testutil.ToFloat64(counter); got != before+1 {
+		t.Fatalf("expected request counter to increase by 1, got %v", got-before)
+	}
 }
 
 func TestServiceMetricsRegistered(t *testing.T) {
 	tokensTotal.WithLabelValues("success").Add(0)
 	grpcRequestsTotal.WithLabelValues("/token.TokenService/MintToken", "OK").Add(0)
 	grpcRequestDuration.WithLabelValues("/token.TokenService/MintToken", "OK").Observe(0)
+	httpRequestsTotal.WithLabelValues(http.MethodGet, "2xx", "/health").Add(0)
+	httpRequestDuration.WithLabelValues(http.MethodGet, "/health").Observe(0)
 	redisOperationDuration.WithLabelValues("set", "success").Observe(0)
 
 	metrics, err := prometheus.DefaultGatherer.Gather()
@@ -47,6 +55,8 @@ func TestServiceMetricsRegistered(t *testing.T) {
 	for _, name := range []string{
 		"grpc_server_requests_total",
 		"grpc_server_request_duration_seconds",
+		"http_requests_total",
+		"http_request_duration_seconds",
 		"redis_queue_depth",
 		"redis_operation_duration_seconds",
 		"token_mint_duration_seconds",
@@ -55,5 +65,22 @@ func TestServiceMetricsRegistered(t *testing.T) {
 		if !found[name] {
 			t.Errorf("metric %q is not registered", name)
 		}
+	}
+}
+
+func TestHTTPMetrics(t *testing.T) {
+	counter := httpRequestsTotal.WithLabelValues(http.MethodGet, "5xx", "/ready")
+	before := testutil.ToFloat64(counter)
+	handler := instrumentHTTP("/ready", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+
+	handler.ServeHTTP(
+		httptest.NewRecorder(),
+		httptest.NewRequest(http.MethodGet, "/ready", nil),
+	)
+
+	if got := testutil.ToFloat64(counter); got != before+1 {
+		t.Fatalf("expected request counter to increase by 1, got %v", got-before)
 	}
 }

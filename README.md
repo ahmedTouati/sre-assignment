@@ -374,19 +374,24 @@ The Argo CD Application enables HPA and NetworkPolicies, so its target cluster
 also needs the resource metrics API. GitHub Actions runs Python and Go tests,
 validates the Helm chart, and builds both images on every push and pull request.
 
-## Design notes
+## Design and production readiness
 
 - One small first-party Helm chart keeps the application and its local backing
   stores easy to review. PostgreSQL and Redis are single-instance demo
   StatefulSets; production should use managed or operator-backed services.
+- Workloads run as fixed non-root users with read-only filesystems, seccomp,
+  dropped capabilities, no privilege escalation, and no service-account token.
+  Secrets stay outside Git, and the API uses a read-only PostgreSQL role.
 - Liveness checks only the process. Readiness checks PostgreSQL/gRPC for Python
   and Redis for Go, avoiding restart loops during dependency outages.
 - Logs remain on JSON stdout and are also exported with OTLP. Trace and span IDs
   correlate Python and Go without logging tokens, passwords, or email addresses.
-- RED metrics follow each service's API: HTTP method/status/latency for Python
-  and gRPC method/code/latency for Go.
-- The PostgreSQL pool is bounded per Python replica. Its size must be reviewed
-  together with HPA limits and the database connection budget.
+- RED metrics follow each service's API: HTTP method/status/latency for Python,
+  gRPC method/code/latency for Go, and HTTP metrics for Go's health endpoints.
+  The Go `/metrics` endpoint is excluded from its own request metrics.
+- The PostgreSQL pool is bounded and connections are rolled back before reuse.
+  SQL and gRPC calls have deadlines; pool size is reviewed with HPA limits and
+  the database connection budget.
 - The included storage, alert thresholds, CPU HPA, and single-window SLO rules
   are suitable for a demo. Production needs HA storage, backups, TLS for OTLP,
   multi-window burn-rate alerts, and an external secret manager.
