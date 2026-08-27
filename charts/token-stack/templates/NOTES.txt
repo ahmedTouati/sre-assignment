@@ -1,0 +1,10 @@
+Token Stack is installed.
+
+Access the API locally:
+  kubectl -n {{ .Release.Namespace }} port-forward service/{{ include "token-stack.pythonName" . }} 8000:8000
+
+Request a token:
+  curl -X POST http://127.0.0.1:8000/token -H 'Content-Type: application/json' -d '{"user_email":"alice@example.com"}'
+
+PostgreSQL and Redis PVCs are retained after uninstall.
+Credentials: {{ include "token-stack.credentialsSecretName" . }}

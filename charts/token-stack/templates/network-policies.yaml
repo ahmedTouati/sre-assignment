@@ -1,0 +1,145 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "token-stack.pythonName" . }}
+  labels:
+    {{- include "token-stack.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "token-stack.selectorLabels" (dict "root" . "component" "python") | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector: {}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: istio-system
+      ports:
+        - port: 8000
+          protocol: TCP
+    - ports:
+        - port: 15020
+          protocol: TCP
+        - port: 15021
+          protocol: TCP
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "token-stack.selectorLabels" (dict "root" . "component" "go") | nindent 14 }}
+      ports:
+        - port: 50051
+          protocol: TCP
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "token-stack.selectorLabels" (dict "root" . "component" "postgres") | nindent 14 }}
+      ports:
+        - port: 5432
+          protocol: TCP
+    {{- include "token-stack.commonEgress" . | nindent 4 }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "token-stack.goName" . }}
+  labels:
+    {{- include "token-stack.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "token-stack.selectorLabels" (dict "root" . "component" "go") | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "token-stack.selectorLabels" (dict "root" . "component" "python") | nindent 14 }}
+      ports:
+        - port: 50051
+          protocol: TCP
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+      ports:
+        - port: 9090
+          protocol: TCP
+    - ports:
+        - port: 15020
+          protocol: TCP
+        - port: 15021
+          protocol: TCP
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "token-stack.selectorLabels" (dict "root" . "component" "redis") | nindent 14 }}
+      ports:
+        - port: 6379
+          protocol: TCP
+    {{- include "token-stack.commonEgress" . | nindent 4 }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "token-stack.postgresName" . }}
+  labels:
+    {{- include "token-stack.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "token-stack.selectorLabels" (dict "root" . "component" "postgres") | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "token-stack.selectorLabels" (dict "root" . "component" "python") | nindent 14 }}
+      ports:
+        - port: 5432
+          protocol: TCP
+    - ports:
+        - port: 15021
+          protocol: TCP
+  egress:
+    {{- include "token-stack.commonEgress" . | nindent 4 }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "token-stack.redisName" . }}
+  labels:
+    {{- include "token-stack.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "token-stack.selectorLabels" (dict "root" . "component" "redis") | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "token-stack.selectorLabels" (dict "root" . "component" "go") | nindent 14 }}
+      ports:
+        - port: 6379
+          protocol: TCP
+    - ports:
+        - port: 15021
+          protocol: TCP
+  egress:
+    {{- include "token-stack.commonEgress" . | nindent 4 }}
+{{- end }}

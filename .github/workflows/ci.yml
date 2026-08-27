@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Set up Python
+        uses: astral-sh/setup-uv@v10.0.0
+        with:
+          version: "0.12.5"
+          enable-cache: true
+
+      - name: Test Python service
+        working-directory: python-service
+        run: |
+          uv python install 3.12
+          uv sync --locked --python 3.12
+          uv run python -m unittest discover -v
+
+      - name: Set up Go
+        uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: golang-service/go.mod
+          cache-dependency-path: golang-service/go.sum
+
+      - name: Test Go service
+        working-directory: golang-service
+        run: |
+          go test ./...
+          go vet ./...
+
+      - name: Validate Helm chart
+        run: |
+          helm lint charts/token-stack --strict
+          helm template token-stack charts/token-stack > /dev/null
+          helm template token-stack charts/token-stack \
+            --set networkPolicy.enabled=true \
+            --set python.autoscaling.enabled=true \
+            --set go.autoscaling.enabled=true > /dev/null
+
+      - name: Build service images
+        run: |
+          docker build --tag token-python-service:ci python-service
+          docker build --tag token-go-service:ci golang-service

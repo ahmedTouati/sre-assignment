@@ -1,0 +1,112 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: token-python
+  namespace: observability
+spec:
+  namespaceSelector:
+    matchNames: [token-stack]
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: token-stack
+      app.kubernetes.io/component: python
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 5s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: token-go
+  namespace: observability
+spec:
+  namespaceSelector:
+    matchNames: [token-stack]
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: token-stack
+      app.kubernetes.io/component: go
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 5s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: token-services
+  namespace: observability
+spec:
+  groups:
+    - name: token-services.sli
+      interval: 30s
+      rules:
+        - record: token:python_availability:ratio_rate5m
+          expr: |
+            1 - (
+              (sum(rate(http_requests_total{handler="/token",status=~"5.."}[5m])) or vector(0))
+              / clamp_min(sum(rate(http_requests_total{handler="/token"}[5m])), 0.001)
+            )
+        - record: token:go_availability:ratio_rate5m
+          expr: |
+            1 - (
+              (sum(rate(grpc_server_requests_total{method=~".*/MintToken",code!="OK"}[5m])) or vector(0))
+              / clamp_min(sum(rate(grpc_server_requests_total{method=~".*/MintToken"}[5m])), 0.001)
+            )
+        - record: token:python_latency:p95_rate5m
+          expr: |
+            histogram_quantile(0.95,
+              sum by (le) (rate(http_request_duration_seconds_bucket{handler="/token"}[5m]))
+            )
+        - record: token:go_latency:p95_rate5m
+          expr: |
+            histogram_quantile(0.95,
+              sum by (le) (rate(grpc_server_request_duration_seconds_bucket{method=~".*/MintToken"}[5m]))
+            )
+    - name: token-services.alerts
+      rules:
+        - alert: PythonServiceAvailabilitySLOBreach
+          expr: token:python_availability:ratio_rate5m < 0.99
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: Python token endpoint is below its 99% availability target
+        - alert: GoServiceAvailabilitySLOBreach
+          expr: token:go_availability:ratio_rate5m < 0.99
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: Go mint endpoint is below its 99% availability target
+        - alert: PythonServiceHighLatency
+          expr: token:python_latency:p95_rate5m > 0.5
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: Python token endpoint p95 latency is above 500 ms
+        - alert: GoServiceHighLatency
+          expr: token:go_latency:p95_rate5m > 0.25
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: Go mint endpoint p95 latency is above 250 ms
+        - alert: PostgresPoolNearCapacity
+          expr: postgres_pool_connections_in_use / clamp_min(postgres_pool_connections_limit, 1) > 0.8
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: PostgreSQL connection pool is above 80% utilization
+        - alert: RedisQueueBacklog
+          expr: redis_queue_depth > 20
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: Redis has more than 20 operations waiting

@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "token-stack.postgresInitName" . }}
+  labels:
+    {{- include "token-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+data:
+  001-init.sql: |
+    {{- .Files.Get "files/database/init.sql" | nindent 4 }}
+  002-app-role.sql: |
+    {{- .Files.Get "files/database/002-app-role.sql" | nindent 4 }}

@@ -1,0 +1,86 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "token-stack.goName" . }}
+  labels:
+    {{- include "token-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: go
+spec:
+  {{- if not .Values.go.autoscaling.enabled }}
+  replicas: {{ .Values.go.replicaCount }}
+  {{- end }}
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      {{- include "token-stack.selectorLabels" (dict "root" . "component" "go") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "token-stack.selectorLabels" (dict "root" . "component" "go") | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/app-configmap.yaml") . | sha256sum }}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: go
+          image: "{{ .Values.go.image.repository }}:{{ .Values.go.image.tag }}"
+          imagePullPolicy: {{ .Values.go.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          ports:
+            - name: grpc
+              containerPort: 50051
+              protocol: TCP
+            - name: metrics
+              containerPort: 9090
+              protocol: TCP
+          env:
+            - name: REDIS_ADDR
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "token-stack.configName" . }}
+                  key: REDIS_ADDR
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "token-stack.credentialsSecretName" . }}
+                  key: redis-password
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "token-stack.configName" . }}
+                  key: OTEL_EXPORTER_OTLP_ENDPOINT
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: metrics
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: metrics
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.go.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 32Mi

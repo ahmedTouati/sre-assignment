@@ -8,20 +8,19 @@ RUN go mod download
 
 COPY . .
 
-RUN CGO_ENABLED=0 go build -trimpath -o /token-service .
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /token-service .
 
 FROM alpine:3.22
 
-RUN addgroup -S app && adduser -S -G app app
+RUN addgroup -g 10001 app && adduser -D -H -u 10001 -G app app
 
-COPY --from=build /token-service /usr/local/bin/token-service
+COPY --from=build --chown=10001:10001 /token-service /usr/local/bin/token-service
 
-USER app
+USER 10001:10001
 
 EXPOSE 50051 9090
 
-# The metrics listener is enough for a basic liveness check.
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=5 \
-    CMD wget -qO- http://127.0.0.1:9090/metrics >/dev/null || exit 1
+    CMD wget -qO- http://127.0.0.1:9090/ready >/dev/null || exit 1
 
 ENTRYPOINT ["/usr/local/bin/token-service"]

@@ -1,0 +1,88 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "token-stack.pythonName" . }}
+  labels:
+    {{- include "token-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: python
+spec:
+  {{- if not .Values.python.autoscaling.enabled }}
+  replicas: {{ .Values.python.replicaCount }}
+  {{- end }}
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      {{- include "token-stack.selectorLabels" (dict "root" . "component" "python") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "token-stack.selectorLabels" (dict "root" . "component" "python") | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/app-configmap.yaml") . | sha256sum }}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: python
+          image: "{{ .Values.python.image.repository }}:{{ .Values.python.image.tag }}"
+          imagePullPolicy: {{ .Values.python.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "token-stack.configName" . }}
+                  key: DATABASE_URL
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "token-stack.credentialsSecretName" . }}
+                  key: postgres-app-password
+            - name: TOKEN_SERVICE_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "token-stack.configName" . }}
+                  key: TOKEN_SERVICE_HOST
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "token-stack.configName" . }}
+                  key: OTEL_EXPORTER_OTLP_ENDPOINT
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.python.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi

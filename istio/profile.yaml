@@ -1,0 +1,11 @@
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+metadata:
+  name: token-stack
+  namespace: istio-system
+spec:
+  profile: minimal
+  components:
+    ingressGateways:
+      - name: istio-ingressgateway
+        enabled: true

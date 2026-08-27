@@ -1,0 +1,12 @@
+{{- include "token-stack.validate" . }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "token-stack.configName" . }}
+  labels:
+    {{- include "token-stack.labels" . | nindent 4 }}
+data:
+  DATABASE_URL: {{ printf "postgresql://tokenapp@%s:5432/tokendb?sslmode=disable" (include "token-stack.postgresName" .) | quote }}
+  TOKEN_SERVICE_HOST: {{ printf "%s:50051" (include "token-stack.goName" .) | quote }}
+  REDIS_ADDR: {{ printf "%s:6379" (include "token-stack.redisName" .) | quote }}
+  OTEL_EXPORTER_OTLP_ENDPOINT: {{ .Values.otel.endpoint | quote }}

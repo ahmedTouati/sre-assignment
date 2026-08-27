@@ -1,0 +1,23 @@
+{{- if .Values.go.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "token-stack.goName" . }}
+  labels:
+    {{- include "token-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: go
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "token-stack.goName" . }}
+  minReplicas: {{ .Values.go.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.go.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.go.autoscaling.targetCPUUtilizationPercentage }}
+{{- end }}

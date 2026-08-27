@@ -1,0 +1,82 @@
+credentials:
+  create: false
+  existingSecret: token-stack-credentials
+  postgresAdminPassword: ""
+  postgresAppPassword: ""
+  redisPassword: ""
+
+python:
+  replicaCount: 1
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 70
+  image:
+    repository: token-python-service
+    tag: "0.1.0"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+go:
+  replicaCount: 1
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 70
+  image:
+    repository: token-go-service
+    tag: "0.1.0"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi
+
+postgresql:
+  image:
+    repository: postgres
+    tag: 17-alpine
+    pullPolicy: IfNotPresent
+  persistence:
+    size: 2Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+redis:
+  image:
+    repository: redis
+    tag: 7.4-alpine
+    pullPolicy: IfNotPresent
+  persistence:
+    size: 1Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+otel:
+  endpoint: ""
+
+networkPolicy:
+  enabled: false

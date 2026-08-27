@@ -1,0 +1,81 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: token-stack
+  labels:
+    istio-injection: enabled
+---
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: token-stack
+spec:
+  mtls:
+    mode: STRICT
+---
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: python-metrics
+  namespace: token-stack
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: python
+  portLevelMtls:
+    8000:
+      mode: PERMISSIVE
+---
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: go-metrics
+  namespace: token-stack
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: go
+  portLevelMtls:
+    9090:
+      mode: PERMISSIVE
+---
+apiVersion: networking.istio.io/v1
+kind: Gateway
+metadata:
+  name: token-stack
+  namespace: token-stack
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+    - port:
+        number: 80
+        name: http
+        protocol: HTTP
+      hosts:
+        - "*"
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: token-stack
+  namespace: token-stack
+spec:
+  hosts:
+    - "*"
+  gateways:
+    - token-stack
+  http:
+    - match:
+        - uri:
+            exact: /token
+        - uri:
+            exact: /health
+        - uri:
+            exact: /ready
+      route:
+        - destination:
+            host: token-stack-python.token-stack.svc.cluster.local
+            port:
+              number: 8000
